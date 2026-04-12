@@ -72,6 +72,7 @@ const Chatbot = () => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantContent = '';
+      let buffer = '';
 
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
@@ -79,23 +80,30 @@ const Chatbot = () => {
         const { done, value } = await reader!.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Simpan baris terakhir yang mungkin belum lengkap kembali ke buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) continue;
+          
+          if (trimmedLine.startsWith('data: ')) {
+            const jsonStr = trimmedLine.replace('data: ', '');
             try {
-              const data = JSON.parse(line.replace('data: ', ''));
+              const data = JSON.parse(jsonStr);
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
               assistantContent += text;
-
+              
               setMessages((prev) => {
                 const newMessages = [...prev];
                 newMessages[newMessages.length - 1].content = assistantContent;
                 return newMessages;
               });
             } catch (e) {
-
+              console.warn('Failed to parse SSE JSON:', e, jsonStr);
             }
           }
         }
@@ -150,7 +158,7 @@ const Chatbot = () => {
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed ${m.role === 'user'
+                  className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap ${m.role === 'user'
                       ? 'bg-primary text-white rounded-tr-none'
                       : 'bg-foreground/5 text-foreground rounded-tl-none border border-foreground/5'
                     }`}
